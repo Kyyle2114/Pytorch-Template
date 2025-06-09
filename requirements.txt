@@ -1,0 +1,6 @@
+torch
+torchvision
+numpy
+wandb
+torchinfo
+opencv-python
