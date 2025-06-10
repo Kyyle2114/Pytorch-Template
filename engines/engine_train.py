@@ -37,7 +37,7 @@ def train_one_epoch(
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', misc.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 20
+    print_freq = 50
     
     accum_iter = args.accum_iter
     
@@ -82,6 +82,7 @@ def train_one_epoch(
     metric_logger.synchronize_between_processes()
     
     print("Averaged stats:", metric_logger)
+    print()
     
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
@@ -113,7 +114,7 @@ def evaluate(
     # switch to evaluation mode
     model.eval()
 
-    for (images, targets) in metric_logger.log_every(data_loader, 10, header):
+    for (images, targets) in metric_logger.log_every(data_loader, 50, header):
         
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
@@ -135,5 +136,6 @@ def evaluate(
     
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
           .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    print()
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}

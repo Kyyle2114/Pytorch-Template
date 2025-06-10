@@ -17,7 +17,7 @@ def seed_everything(seed = 21):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
-    torch.use_deterministic_algorithms(True)
+    # torch.use_deterministic_algorithms(True)
 
 
 def seed_worker(_worker_id):
@@ -289,7 +289,7 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, is
         if not is_best:
             checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % epoch_name)]
         else:
-            checkpoint_path = [output_dir / 'best_model.pth']   # evaluate on validation dataset
+            checkpoint_paths = [output_dir / 'best_model.pth']   # evaluate on validation dataset
             
         for checkpoint_path in checkpoint_paths:
             to_save = {
@@ -354,7 +354,7 @@ class EarlyStopping:
         self.verbose = verbose
         self.counter = 0
         
-        self.best_score = np.Inf if mode == 'min' else 0
+        self.best_score = np.inf if mode == 'min' else 0
         self.mode = mode
         self.delta = delta
         
@@ -368,30 +368,30 @@ class EarlyStopping:
                 self.counter = 0
                 self.best_score = score
                 if self.verbose:
-                    print(f'[EarlyStopping] (Update) Best Score: {self.best_score:.5f}')
+                    print(f'[EarlyStopping] (Update) Best Score: {self.best_score:.5f} \n')
             else:
                 self.counter += 1
                 if self.verbose:
                     print(f'[EarlyStopping] (Patience) {self.counter}/{self.patience}, ' \
                           f'Best: {self.best_score:.5f}' \
-                          f', Current: {score:.5f}, Delta: {np.abs(self.best_score - score):.5f}')
+                          f', Current: {score:.5f}, Delta: {np.abs(self.best_score - score):.5f} \n')
                 
         elif self.mode == 'max':
             if score > (self.best_score + self.delta):
                 self.counter = 0
                 self.best_score = score
                 if self.verbose:
-                    print(f'[EarlyStopping] (Update) Best Score: {self.best_score:.5f}')
+                    print(f'[EarlyStopping] (Update) Best Score: {self.best_score:.5f} \n')
             else:
                 self.counter += 1
                 if self.verbose:
                     print(f'[EarlyStopping] (Patience) {self.counter}/{self.patience}, ' \
                           f'Best: {self.best_score:.5f}' \
-                          f', Current: {score:.5f}, Delta: {np.abs(self.best_score - score):.5f}')
+                          f', Current: {score:.5f}, Delta: {np.abs(self.best_score - score):.5f} \n')
                 
         if self.counter >= self.patience:
             if self.verbose:
-                print(f'[EarlyStop Triggered] Best Score: {self.best_score:.5f}')
+                print(f'[EarlyStop Triggered] Best Score: {self.best_score:.5f} \n')
             # Early Stop
             self.early_stop = True
         else:

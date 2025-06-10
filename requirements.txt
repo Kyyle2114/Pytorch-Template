@@ -4,3 +4,4 @@ numpy
 wandb
 torchinfo
 opencv-python
+timm

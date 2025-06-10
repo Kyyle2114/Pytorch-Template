@@ -6,6 +6,8 @@ import time
 import datetime
 import json
 import numpy as np
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import torch
 import torch.nn as nn 
@@ -82,13 +84,13 @@ def main(rank, args):
         args (parser): Parsed arguments.
     """
     ### distributed training & WandB setting ###
-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
-    print("{}".format(args).replace(', ', ',\n'))
-    
     misc.seed_everything(args.seed)
 
     misc.init_distributed_training(rank, args)
     local_gpu_id = args.gpu
+    
+    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+    print("{}".format(args).replace(', ', ',\n'))
     
     if misc.is_main_process():
         wandb.init(project=args.project_name)
@@ -178,6 +180,7 @@ def main(rank, args):
         lr=1e-7 # small lr for warm-up
     )
     print(optimizer)
+    print()
     
     scheduler = CosineAnnealingWarmUpRestarts(
         optimizer, 
@@ -287,7 +290,7 @@ def main(rank, args):
             # check early stopping
             es(val_loss)
             if es.early_stop:
-                print(f'[INFO] Early stopping triggered at epoch {epoch+1}')
+                print(f'[INFO] Early stopping triggered at epoch {epoch+1} \n')
                 if args.dist:
                     # Broadcast early stopping signal to all processes
                     early_stop_tensor = torch.tensor(1, device=device)
@@ -323,7 +326,10 @@ def main(rank, args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
     
-
+    if misc.is_dist_avail_and_initialized:
+        dist.destroy_process_group()
+    
+    
 if __name__ == '__main__': 
 
     wandb.login()
