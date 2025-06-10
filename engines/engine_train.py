@@ -7,6 +7,8 @@ import torch
 
 from utils import misc
 
+PRINT_FREQ = 25
+
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable, 
@@ -37,14 +39,13 @@ def train_one_epoch(
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', misc.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 50
     
     accum_iter = args.accum_iter
     
     criterion = criterion
     optimizer.zero_grad()
     
-    for data_iter_step, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, (samples, targets) in enumerate(metric_logger.log_every(data_loader, PRINT_FREQ, header)):
 
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
@@ -92,8 +93,7 @@ def evaluate(
     model: torch.nn.Module,
     data_loader: Iterable, 
     criterion: torch.nn.Module,
-    device: torch.device
-    ) -> dict:
+    device: torch.device) -> dict:
     """
     Evaluate the model. 
 
@@ -114,7 +114,7 @@ def evaluate(
     # switch to evaluation mode
     model.eval()
 
-    for (images, targets) in metric_logger.log_every(data_loader, 50, header):
+    for (images, targets) in metric_logger.log_every(data_loader, PRINT_FREQ, header):
         
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)

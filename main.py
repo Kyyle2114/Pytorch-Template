@@ -28,8 +28,8 @@ def get_args_parser():
     parser = argparse.ArgumentParser(add_help=False)
     
     # initial config 
-    parser.add_argument('--port', type=int, default=1234,
-                        help='port number for distributed learning')
+    parser.add_argument('--port', type=int, default=None,
+                        help='port number for distributed learning (if not specified, a random free port will be used)')
     
     parser.add_argument('--seed', type=int, default=21, 
                         help='random seed')
@@ -85,16 +85,21 @@ def main(rank, args):
     """
     ### distributed training & WandB setting ###
     misc.seed_everything(args.seed)
-
+    
     misc.init_distributed_training(rank, args)
     local_gpu_id = args.gpu
-    
-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
-    print("{}".format(args).replace(', ', ',\n'))
     
     if misc.is_main_process():
         wandb.init(project=args.project_name)
         wandb.run.name = args.run_name 
+    
+    # Update args.gpu with actual GPU number from CUDA_VISIBLE_DEVICES
+    cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
+    args.gpu = cuda_visible_devices.split(',')
+    
+    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+    print(args)
+    print()
         
     ### dataset & dataloader ### 
     transform = T.Compose([
@@ -117,13 +122,16 @@ def main(rank, args):
     
     if args.dist:
         train_sampler = DistributedSampler(dataset=train_set, shuffle=True, seed=args.seed)
-        batch_sampler_train = BatchSampler(train_sampler, args.batch_size, drop_last=True)
         train_loader = DataLoader(
             train_set, 
-            batch_sampler=batch_sampler_train, 
+            batch_size=args.batch_size,
+            sampler=train_sampler,
             num_workers=args.num_workers,
             pin_memory=True,
-            worker_init_fn=misc.seed_worker
+            drop_last=True,
+            worker_init_fn=misc.seed_worker,
+            persistent_workers=True,
+            prefetch_factor=2
         )
     
     if not args.dist:
@@ -133,17 +141,22 @@ def main(rank, args):
             shuffle=True, 
             num_workers=args.num_workers,
             pin_memory=True,
-            worker_init_fn=misc.seed_worker
+            drop_last=True,
+            worker_init_fn=misc.seed_worker,
+            persistent_workers=True,
+            prefetch_factor=2
         )
     
     val_loader = DataLoader(
-            val_set, 
-            batch_size=args.batch_size, 
-            shuffle=False, 
-            num_workers=args.num_workers,
-            pin_memory=True,
-            drop_last=False
-        )
+        val_set, 
+        batch_size=args.batch_size, 
+        shuffle=False, 
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=False,
+        persistent_workers=True,
+        prefetch_factor=2
+    )
     
     ### model config ###
     device = torch.device(f'cuda:{local_gpu_id}' if torch.cuda.is_available() else 'cpu')
@@ -179,6 +192,7 @@ def main(rank, args):
         param_groups, 
         lr=1e-7 # small lr for warm-up
     )
+    print('Optimizer:')
     print(optimizer)
     print()
     
@@ -218,17 +232,17 @@ def main(rank, args):
     early_stop_tensor = torch.tensor(0, device=device) if args.dist else None
     
     for epoch in range(args.epoch):
-        
+
         # check early stopping
         if args.dist:
             # Synchronize early stopping decision across all processes
             dist.broadcast(early_stop_tensor, src=0)
             if early_stop_tensor.item() == 1:
                 break
-        
+
         if args.dist:
             train_sampler.set_epoch(epoch)
-        
+
         # model train
         train_stats = engine_train.train_one_epoch(
             model=model, 
@@ -258,46 +272,45 @@ def main(rank, args):
         scheduler.step()
             
         # model evaluation (validation set)
-        if misc.is_main_process():
-            eval_stats = engine_train.evaluate(
-                model=model,
-                data_loader=val_loader,
-                criterion=criterion,
-                device=device
-            )
-            
-            print(f"[INFO] Accuracy of the network on the {len(val_set)} test images: {eval_stats['acc1']:.1f}%")
-            max_accuracy = max(max_accuracy, eval_stats["acc1"])
-            val_loss = eval_stats['loss']
-            print(f'[INFO] Current max validation accuracy: {max_accuracy:.2f}%')
-            
-            if val_loss < max_loss:
-                print(f'[INFO] Validation loss has been improved from {max_loss:.5f} to {val_loss:.5f}. Save the model.')
-                max_loss = val_loss
-                try:
-                    misc.save_model(
-                        args=args, 
-                        model=model, 
-                        model_without_ddp=model_without_ddp, 
-                        optimizer=optimizer,
-                        loss_scaler=loss_scaler, 
-                        epoch=epoch,
-                        is_best=True
-                    )
-                except Exception as e:
-                    print(f"Error saving model: {e}")
-            
-            # check early stopping
-            es(val_loss)
-            if es.early_stop:
-                print(f'[INFO] Early stopping triggered at epoch {epoch+1} \n')
-                if args.dist:
-                    # Broadcast early stopping signal to all processes
-                    early_stop_tensor = torch.tensor(1, device=device)
-                break
-            else:
-                if args.dist:
-                    early_stop_tensor = torch.tensor(0, device=device)
+        eval_stats = engine_train.evaluate(
+            model=model,
+            data_loader=val_loader,
+            criterion=criterion,
+            device=device
+        )
+        
+        print(f"[INFO] Accuracy of the network on the {len(val_set)} test images: {eval_stats['acc1']:.1f}%")
+        max_accuracy = max(max_accuracy, eval_stats["acc1"])
+        val_loss = eval_stats['loss']
+        print(f'[INFO] Current max validation accuracy: {max_accuracy:.2f}%')
+        
+        if val_loss < max_loss:
+            print(f'[INFO] Validation loss has been improved from {max_loss:.5f} to {val_loss:.5f}. Save the model.')
+            max_loss = val_loss
+            try:
+                misc.save_model(
+                    args=args, 
+                    model=model, 
+                    model_without_ddp=model_without_ddp, 
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler, 
+                    epoch=epoch,
+                    is_best=True
+                )
+            except Exception as e:
+                print(f"Error saving model: {e}")
+        
+        # check early stopping
+        es(val_loss)
+        if es.early_stop:
+            print(f'[INFO] Early stopping triggered at epoch {epoch+1} \n')
+            if args.dist:
+                # Broadcast early stopping signal to all processes
+                early_stop_tensor = torch.tensor(1, device=device)
+            break
+        else:
+            if args.dist:
+                early_stop_tensor = torch.tensor(0, device=device)
 
         # stats logging
         if args.output_dir and misc.is_main_process():
@@ -326,9 +339,8 @@ def main(rank, args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
     
-    if misc.is_dist_avail_and_initialized:
+    if misc.is_dist_avail_and_initialized():
         dist.destroy_process_group()
-    
     
 if __name__ == '__main__': 
 

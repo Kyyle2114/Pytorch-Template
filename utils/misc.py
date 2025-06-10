@@ -3,6 +3,7 @@ import random
 import time 
 import datetime
 import numpy as np
+import random
 from pathlib import Path
 from collections import defaultdict, deque
 
@@ -33,7 +34,14 @@ def init_distributed_training(rank, args):
     torch.cuda.set_device(local_gpu_id)
     
     if args.rank is not None:
-        print("Use GPU: {} for training".format(local_gpu_id))
+        # Get the actual GPU number from CUDA_VISIBLE_DEVICES
+        cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
+        actual_gpu = int(cuda_visible_devices.split(',')[local_gpu_id])
+        print("Use GPU: {} for training".format(actual_gpu))
+
+    # Get a random free port if not specified
+    if not hasattr(args, 'port') or args.port is None:
+        args.port = random.randint(10000, 65000)
 
     torch.distributed.init_process_group(
         backend='nccl',
@@ -41,11 +49,10 @@ def init_distributed_training(rank, args):
         world_size=args.ngpus_per_node,
         rank=args.rank
     )
-
-    torch.distributed.barrier()
+    
+    dist.barrier(device_ids=[torch.cuda.current_device()])
 
     setup_for_distributed(args.rank == 0)
-    print('args :', args)
 
 
 def setup_for_distributed(is_master):
