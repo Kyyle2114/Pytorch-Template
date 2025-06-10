@@ -5,6 +5,7 @@ import torchinfo
 import time
 import datetime
 import json
+import random
 import numpy as np
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -75,8 +76,8 @@ def get_args_parser():
     
     return parser
 
+
 def main(rank, args):
-    
     """
     Main function for model training.
 
@@ -97,10 +98,9 @@ def main(rank, args):
     cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
     args.gpu = cuda_visible_devices.split(',')
     
-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
-    print(args)
-    print()
-        
+    print('\njob dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+    print(args, '\n')
+    
     ### dataset & dataloader ### 
     transform = T.Compose([
         T.ToTensor(),
@@ -193,8 +193,7 @@ def main(rank, args):
         lr=1e-7 # small lr for warm-up
     )
     print('Optimizer:')
-    print(optimizer)
-    print()
+    print(optimizer, '\n')
     
     scheduler = CosineAnnealingWarmUpRestarts(
         optimizer, 
@@ -267,7 +266,7 @@ def main(rank, args):
                     epoch=epoch
                 )
             except Exception as e:
-                print(f"Error saving model: {e}")
+                print(f"Error saving model: {e} \n")
             
         scheduler.step()
             
@@ -298,7 +297,7 @@ def main(rank, args):
                     is_best=True
                 )
             except Exception as e:
-                print(f"Error saving model: {e}")
+                print(f"Error saving model: {e} \n")
         
         # check early stopping
         es(val_loss)
@@ -337,7 +336,7 @@ def main(rank, args):
                 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Training time {}'.format(total_time_str))
+    print('Training time {} \n'.format(total_time_str))
     
     if misc.is_dist_avail_and_initialized():
         dist.destroy_process_group()
@@ -351,6 +350,10 @@ if __name__ == '__main__':
     
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
+        
+    # Get a random port if not specified
+    if not hasattr(args, 'port') or args.port is None:
+        args.port = random.randint(10000, 65000)
     
     args.ngpus_per_node = torch.cuda.device_count()
     args.dist = True if args.ngpus_per_node > 1 else False
@@ -364,4 +367,4 @@ if __name__ == '__main__':
         join=True
     )
         
-    print('=== Training Complete ===')
+    print('\n=== Training Complete ===\n')

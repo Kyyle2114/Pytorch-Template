@@ -39,10 +39,6 @@ def init_distributed_training(rank, args):
         actual_gpu = int(cuda_visible_devices.split(',')[local_gpu_id])
         print("Use GPU: {} for training".format(actual_gpu))
 
-    # Get a random free port if not specified
-    if not hasattr(args, 'port') or args.port is None:
-        args.port = random.randint(10000, 65000)
-
     torch.distributed.init_process_group(
         backend='nccl',
         init_method='tcp://127.0.0.1:' + str(args.port),
@@ -53,6 +49,7 @@ def init_distributed_training(rank, args):
     dist.barrier(device_ids=[torch.cuda.current_device()])
 
     setup_for_distributed(args.rank == 0)
+    print()
 
 
 def setup_for_distributed(is_master):
