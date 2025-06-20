@@ -1,3 +1,5 @@
+# code reference : https://gaussian37.github.io/dl-pytorch-lr_scheduler/
+
 import math
 from torch.optim.lr_scheduler import _LRScheduler
 

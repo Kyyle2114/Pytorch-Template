@@ -50,7 +50,7 @@ def train_one_epoch(
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             outputs = model(samples)
             loss = criterion(outputs, targets)
 
@@ -120,7 +120,7 @@ def evaluate(
         targets = targets.to(device, non_blocking=True)
 
         # compute output
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             outputs = model(images)
             loss = criterion(outputs, targets)
             

@@ -27,31 +27,8 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.data_images)
     
-    
-def make_dataset(
-    dataset_path: str,
-    transform = None
-    ) -> Type[torch.utils.data.Dataset]:
-    """
-    Make PyTorch Dataset for given task.
-    Read the image using the opencv library and return it as an np.array.
 
-    Args:
-        dataset_path (str): dataset path.
-        transform (transform): dataset transform.
-
-    Returns:
-        torch.Dataset: PyTorch Dataset
-    """
-        
-    dataset = CustomDataset(
-        dataset_path=dataset_path,
-        transform=transform
-    )
-        
-    return dataset
-
-### CIFAR10 for testing ###
+# --- CIFAR10 for testing ---
 
 class CIFAR10Dataset(Dataset):
     def __init__(self, root: str, train: bool = True, transform: Optional[torch.nn.Module] = None):

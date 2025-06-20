@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Set CUDA device
+# set CUDA device
 export CUDA_VISIBLE_DEVICES=0
 
-# Run training
+# run training
 python main.py \
     --output_dir ./output_dir \
     --dataset_path ./dataset \

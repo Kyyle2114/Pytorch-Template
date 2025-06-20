@@ -15,20 +15,18 @@ import torch.nn as nn
 import torchvision.transforms as T
 import torch.distributed as dist
 
-from torch.utils.data import DataLoader, BatchSampler
+from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel
 
-from utils import misc, datasets
-from utils.misc import NativeScalerWithGradNormCount as NativeScaler
-from utils.lr_sched import CosineAnnealingWarmUpRestarts
+from utils import misc, datasets, lr_sched
 from engines import engine_train
 from models import cnn
 
 def get_args_parser():
     parser = argparse.ArgumentParser(add_help=False)
     
-    # initial config 
+    # --- Initial config ---
     parser.add_argument('--port', type=int, default=None,
                         help='port number for distributed learning (if not specified, a random free port will be used)')
     
@@ -38,7 +36,7 @@ def get_args_parser():
     parser.add_argument('--output_dir', default='./output_dir',
                         help='path where to save, empty for no saving')
     
-    # training config 
+    # --- Training config ---
     parser.add_argument('--dataset_path', type=str, default='./dataset', 
                         help='dataset path')
     
@@ -51,7 +49,7 @@ def get_args_parser():
     parser.add_argument('--patience', type=int, default=50, 
                         help='patience for early stopping')
     
-    # optimizer config 
+    # --- Optimizer config ---
     parser.add_argument('--lr', type=float, default=1e-3, 
                         help='initial (base) learning rate')
     
@@ -67,7 +65,7 @@ def get_args_parser():
     parser.add_argument('--clip_grad', type=float, default=None,
                         help='clip gradient norm (default: None, no clipping)')
     
-    # wandb config
+    # --- WandB config ---
     parser.add_argument('--project_name', type=str, default='Model-Training', 
                         help='WandB project name')
     
@@ -84,24 +82,31 @@ def main(rank, args):
     Args:
         args (parser): Parsed arguments.
     """
-    ### distributed training & WandB setting ###
+    # --- Distributed training & WandB setting ---
     misc.seed_everything(args.seed)
     
     misc.init_distributed_training(rank, args)
     local_gpu_id = args.gpu
     
     if misc.is_main_process():
-        wandb.init(project=args.project_name)
-        wandb.run.name = args.run_name 
+        wandb.init(project=args.project_name, name=args.run_name)
     
-    # Update args.gpu with actual GPU number from CUDA_VISIBLE_DEVICES
+    # update args.gpu with actual GPU number from CUDA_VISIBLE_DEVICES
     cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
     args.gpu = cuda_visible_devices.split(',')
     
-    print('\njob dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
-    print(args, '\n')
+    if misc.is_main_process():
+        print('\njob dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+        print(args, '\n')
+        
+        # save args as JSON file
+        args_dict = vars(args)
+        args_file_path = os.path.join(args.output_dir, 'args.json')
+        
+        with open(args_file_path, mode="a", encoding="utf-8") as f:
+            f.write(json.dumps(args_dict) + "\n")
     
-    ### dataset & dataloader ### 
+    # --- Dataset & Dataloader ---
     transform = T.Compose([
         T.ToTensor(),
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -158,7 +163,7 @@ def main(rank, args):
         prefetch_factor=2
     )
     
-    ### model config ###
+    # --- Model config ---
     device = torch.device(f'cuda:{local_gpu_id}' if torch.cuda.is_available() else 'cpu')
     
     model = cnn.SimpleCNNforCIFAR10()
@@ -177,9 +182,9 @@ def main(rank, args):
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model = DistributedDataParallel(module=model, device_ids=[local_gpu_id])    
 
-    ### training config (loss, optimizer, scheduler) ###
+    # --- Training config (loss, optimizer, scheduler) ---
     criterion = nn.CrossEntropyLoss().to(device)
-    loss_scaler = NativeScaler()
+    loss_scaler = misc.NativeScalerWithGradNormCount()
 
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
     args.abs_lr = args.lr * eff_batch_size / 256
@@ -195,16 +200,16 @@ def main(rank, args):
     print('Optimizer:')
     print(optimizer, '\n')
     
-    scheduler = CosineAnnealingWarmUpRestarts(
+    scheduler = lr_sched.CosineAnnealingWarmUpRestarts(
         optimizer, 
-        T_0=args.epoch//2, 
+        T_0=args.epoch, 
         T_mult=1, 
         eta_max=args.abs_lr, 
         T_up=args.warmup_epochs, 
-        gamma=0.9
+        gamma=1.0
     )
 
-    ### wandb logging ###
+    # --- WandB logging ---
     if misc.is_main_process():
         wandb.watch(
             models=model_without_ddp,
@@ -213,20 +218,21 @@ def main(rank, args):
             log_freq=10
         )
     
-        wandb.run.summary['optimizer'] = type(optimizer).__name__
-        wandb.run.summary['scheduler'] = type(scheduler).__name__
-        wandb.run.summary['initial lr'] = args.abs_lr
-        wandb.run.summary['total epoch'] = args.epoch
-        wandb.run.summary['weight decay'] = args.weight_decay
-        wandb.run.summary['batch size'] = args.batch_size
-        wandb.run.summary['effective batch size'] = args.batch_size * misc.get_world_size()
+        # log all arguments and additional configurations to wandb
+        wandb.config.update(vars(args), allow_val_change=True)
+        wandb.config.update({
+            'optimizer': type(optimizer).__name__,
+            'scheduler': type(scheduler).__name__,
+            'batch_size_accumulated': args.batch_size * args.accum_iter,
+            'effective_batch_size': eff_batch_size
+        })
     
-    ### model training ### 
+    # --- Model training ---
     start_time = time.time()
     max_accuracy = 0.0  # for evaluation
     max_loss = np.inf   # for evaluation 
     
-    # Early stopping : determined based on the validation loss. lower is better (mode='min')
+    # early stopping : determined based on the validation loss. lower is better (mode='min')
     es = misc.EarlyStopping(patience=args.patience, delta=0, mode='min', verbose=True)
     early_stop_tensor = torch.tensor(0, device=device) if args.dist else None
     
@@ -234,7 +240,7 @@ def main(rank, args):
 
         # check early stopping
         if args.dist:
-            # Synchronize early stopping decision across all processes
+            # synchronize early stopping decision across all processes
             dist.broadcast(early_stop_tensor, src=0)
             if early_stop_tensor.item() == 1:
                 break
@@ -304,7 +310,7 @@ def main(rank, args):
         if es.early_stop:
             print(f'[INFO] Early stopping triggered at epoch {epoch+1} \n')
             if args.dist:
-                # Broadcast early stopping signal to all processes
+                # broadcast early stopping signal to all processes
                 early_stop_tensor = torch.tensor(1, device=device)
             break
         else:
@@ -322,7 +328,7 @@ def main(rank, args):
             
             with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
-
+        
         # wandb logging
         if misc.is_main_process():
             wandb.log(
@@ -333,13 +339,14 @@ def main(rank, args):
                     'Evaluation top-1 accuracy': eval_stats['acc1']
                 }, step=epoch+1
             )
-                
+    
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {} \n'.format(total_time_str))
     
     if misc.is_dist_avail_and_initialized():
         dist.destroy_process_group()
+    
     
 if __name__ == '__main__': 
 
@@ -350,8 +357,8 @@ if __name__ == '__main__':
     
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
-        
-    # Get a random port if not specified
+    
+    # get a random port if not specified
     if not hasattr(args, 'port') or args.port is None:
         args.port = random.randint(10000, 65000)
     
@@ -359,12 +366,12 @@ if __name__ == '__main__':
     args.dist = True if args.ngpus_per_node > 1 else False
     args.gpu_ids = list(range(args.ngpus_per_node))
     args.num_workers = args.ngpus_per_node * 4
-        
+    
     torch.multiprocessing.spawn(
         main,
         args=(args,),
         nprocs=args.ngpus_per_node,
         join=True
     )
-        
+    
     print('\n=== Training Complete ===\n')

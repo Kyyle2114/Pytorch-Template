@@ -1,4 +1,4 @@
-# Code Template for DL training 
+# Pytorch Template
 
 Structured and modular template for deep learning model training.
 
@@ -48,3 +48,7 @@ The code is designed to be modular, allowing you to easily:
 - Change the dataset in `dataset/` and `utils/datasets.py`
 - Modify training configurations
 - Add new features while maintaining the existing pipeline structure
+
+### Cursor Rules 
+
+The cursor rules for this repository are inspired by the collection of best practices at [awesome-cursorrules](https://github.com/PatrickJS/awesome-cursorrules).

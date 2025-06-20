@@ -16,28 +16,28 @@ class SimpleCNNforCIFAR10(nn.Module):
         """
         super().__init__()
         
-        # Convolutional layers
+        # --- Convolutional layers ---
         self.features = nn.Sequential(
-            # First conv block
+            # first conv block
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
-            # Second conv block
+            # second conv block
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             
-            # Third conv block
+            # third conv block
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
         
-        # Classifier
+        # --- Classifier ---
         self.classifier = nn.Sequential(
             nn.Dropout(p=0.5),
             nn.Linear(128 * 4 * 4, 512),
@@ -46,7 +46,7 @@ class SimpleCNNforCIFAR10(nn.Module):
             nn.Linear(512, num_classes)
         )
         
-        # Initialize weights
+        # --- Initialize weights ---
         self._initialize_weights()
         
     def _initialize_weights(self):
