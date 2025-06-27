@@ -59,6 +59,7 @@ def init_distributed_training(args):
     args.gpu = args.local_rank
 
     torch.cuda.set_device(args.local_rank)
+    setup_for_distributed(args.rank == 0)
     
     # The 'env://' init method tells the process group to initialize
     # using environment variables set by torchrun.
@@ -69,7 +70,6 @@ def init_distributed_training(args):
     )
     
     dist.barrier()
-    setup_for_distributed(args.rank == 0)
 
 
 def setup_for_distributed(is_master):

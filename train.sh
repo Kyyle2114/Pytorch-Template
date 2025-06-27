@@ -15,6 +15,7 @@ echo "Using $N_GPUS GPUs based on CUDA_VISIBLE_DEVICES..."
 torchrun --nproc_per_node=$N_GPUS main.py \
     --output_dir ./output_dir \
     --dataset_path ./dataset \
+    --num_workers 4 \
     --batch_size 32 \
     --epoch 100 \
     --lr 1e-3 \

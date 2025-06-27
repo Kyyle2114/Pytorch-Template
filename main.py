@@ -27,9 +27,6 @@ def get_args_parser():
     parser = argparse.ArgumentParser(add_help=False)
     
     # --- Initial config ---
-    parser.add_argument('--port', type=int, default=None,
-                        help='port number for distributed learning (if not specified, a random free port will be used)')
-    
     parser.add_argument('--seed', type=int, default=21, 
                         help='random seed')
     
@@ -48,6 +45,9 @@ def get_args_parser():
     
     parser.add_argument('--patience', type=int, default=50, 
                         help='patience for early stopping')
+    
+    parser.add_argument('--num_workers', type=int, default=4,
+                        help='number of data loading workers')
     
     # --- Optimizer config ---
     parser.add_argument('--lr', type=float, default=1e-3, 
