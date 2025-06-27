@@ -89,6 +89,7 @@ def main(args):
     local_gpu_id = args.gpu
     
     if misc.is_main_process():
+        wandb.login()
         wandb.init(project=args.project_name, name=args.run_name)
     
     # update args.gpu with actual GPU number from CUDA_VISIBLE_DEVICES
@@ -349,8 +350,6 @@ def main(args):
     
     
 if __name__ == '__main__': 
-
-    wandb.login()
     
     parser = argparse.ArgumentParser('Model-Training', parents=[get_args_parser()])
     args = parser.parse_args() 

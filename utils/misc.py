@@ -69,7 +69,8 @@ def init_distributed_training(args):
         init_method='env://',
     )
     
-    dist.barrier()
+    # Explicitly tell the barrier which device to use for synchronization.
+    dist.barrier(device_ids=[args.local_rank])
 
 
 def setup_for_distributed(is_master):
