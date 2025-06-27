@@ -27,29 +27,49 @@ def seed_worker(_worker_id):
     random.seed(worker_seed)
 
 
-def init_distributed_training(rank, args):
-    args.rank = rank
-    args.gpu = args.rank % torch.cuda.device_count()
-    local_gpu_id = int(args.gpu_ids[args.rank])
-    torch.cuda.set_device(local_gpu_id)
-    
-    if args.rank is not None:
-        # Get the actual GPU number from CUDA_VISIBLE_DEVICES
-        cuda_visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '0')
-        actual_gpu = int(cuda_visible_devices.split(',')[local_gpu_id])
-        print("Use GPU: {} for training".format(actual_gpu))
+def init_distributed_training(args):
+    """
+    Initializes the distributed training environment using torchrun.
 
+    This function checks for environment variables set by torchrun to configure
+    distributed data parallel (DDP) training. If the environment variables are
+    not present, it configures the script to run in a single-process,
+    non-distributed mode.
+
+    Args:
+        args: An argparse.Namespace object containing the script's arguments.
+              This object will be modified in-place to store distributed
+              training settings like rank, world_size, etc.
+    """
+    if 'RANK' not in os.environ or 'WORLD_SIZE' not in os.environ:
+        # If not using torchrun, run in non-distributed mode.
+        args.gpu = 0
+        args.rank = 0
+        args.world_size = 1
+        args.dist = False
+        setup_for_distributed(is_master=True)
+        print("Running in non-distributed mode.")
+        return
+
+    # These environment variables are automatically set by torchrun.
+    args.dist = True
+    args.rank = int(os.environ['RANK'])
+    args.local_rank = int(os.environ['LOCAL_RANK'])
+    args.world_size = int(os.environ['WORLD_SIZE'])
+    args.gpu = args.local_rank
+
+    torch.cuda.set_device(args.local_rank)
+    
+    # The 'env://' init method tells the process group to initialize
+    # using environment variables set by torchrun.
+    print(f'| distributed init (rank {args.rank}, local_rank {args.local_rank}): env://', flush=True)
     torch.distributed.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:' + str(args.port),
-        world_size=args.ngpus_per_node,
-        rank=args.rank
+        init_method='env://',
     )
     
-    dist.barrier(device_ids=[torch.cuda.current_device()])
-
+    dist.barrier()
     setup_for_distributed(args.rank == 0)
-    print()
 
 
 def setup_for_distributed(is_master):

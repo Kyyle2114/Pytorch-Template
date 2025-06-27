@@ -75,7 +75,7 @@ def get_args_parser():
     return parser
 
 
-def main(rank, args):
+def main(args):
     """
     Main function for model training.
 
@@ -85,7 +85,7 @@ def main(rank, args):
     # --- Distributed training & WandB setting ---
     misc.seed_everything(args.seed)
     
-    misc.init_distributed_training(rank, args)
+    misc.init_distributed_training(args)
     local_gpu_id = args.gpu
     
     if misc.is_main_process():
@@ -358,20 +358,6 @@ if __name__ == '__main__':
     if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
     
-    # get a random port if not specified
-    if not hasattr(args, 'port') or args.port is None:
-        args.port = random.randint(10000, 65000)
-    
-    args.ngpus_per_node = torch.cuda.device_count()
-    args.dist = True if args.ngpus_per_node > 1 else False
-    args.gpu_ids = list(range(args.ngpus_per_node))
-    args.num_workers = args.ngpus_per_node * 4
-    
-    torch.multiprocessing.spawn(
-        main,
-        args=(args,),
-        nprocs=args.ngpus_per_node,
-        join=True
-    )
+    main(args)
     
     print('\n=== Training Complete ===\n')
